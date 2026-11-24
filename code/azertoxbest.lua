@@ -42,6 +42,8 @@ local settings = {
 local USER_SCOPE = tostring(player.UserId)
 local CONFIG_FILE = "azertox_sniper_" .. USER_SCOPE .. ".json"
 local LEGACY_CONFIG_FILE = "skibidi_redeemer_" .. USER_SCOPE .. ".json"
+local RESUME_FILE = "azertox_code_resume_" .. USER_SCOPE .. ".json"
+local resumeState = { active = false, parts = {}, savedAt = 0 }
 local PERSISTED = { armed = "boolean", autoSubmit = "boolean", autoEnter = "boolean", antiRagdoll = "boolean", riddleSolver = "boolean", retypeInvalid = "boolean", twoWordCheck = "boolean", submitAfter = "number", geminiKey = "string", aiProvider = "string", groqKey = "string", sharedVoter = "string",
     assistant = "boolean", assistantX = "number", assistantY = "number", assistantScale = "number",
     assistantPersonality = "string" }
@@ -50,6 +52,26 @@ local httpRequest = (syn and syn.request) or (http and http.request) or request 
 local GEMINI_MODELS_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 local GEMINI_KEY_PAGE = "https://aistudio.google.com/apikey"
 local ConfigHttp = cloneref(game:GetService("HttpService"))
+
+-- Read the unfinished code before the rest of the UI starts.  This file is
+-- separate from the API-key config and is scoped to the Roblox UserId.
+pcall(function()
+    if not (isfile and readfile) or not isfile(RESUME_FILE) then return end
+    local saved = ConfigHttp:JSONDecode(readfile(RESUME_FILE))
+    if type(saved) ~= "table" or saved.version ~= 1 then return end
+    local loaded = {}
+    if type(saved.parts) == "table" then
+        for i = 1, math.min(#saved.parts, 5) do
+            local part = tostring(saved.parts[i] or "")
+            if part ~= "" and part:match("^[%w_%-]+$") then loaded[#loaded + 1] = part end
+        end
+    end
+    resumeState = {
+        active = saved.active == true,
+        parts = loaded,
+        savedAt = tonumber(saved.savedAt) or 0,
+    }
+end)
 
 local GEMINI_MODELS = { "gemini-3.5-flash-lite", "gemini-flash-lite-latest" }
 local GEMINI_TIMEOUT = 20
@@ -5014,6 +5036,26 @@ local function normQuestion(text)
     for _, suffix in ipairs({ " answer 1", " answer 2", " answer 3", " answer 4", " answer 5", " exact answer", " exact" }) do
         if q:sub(-#suffix) == suffix then q = q:sub(1, #q - #suffix):match("^%s*(.-)%s*$") or "" break end
     end
+    local aliases = {
+        ["age of sammy"] = "how old is sammy",
+        ["sammy age"] = "how old is sammy",
+        ["sammys age"] = "how old is sammy",
+        ["the year of the candy"] = "candy mutation year",
+        ["year of the candy"] = "candy mutation year",
+        ["the year of candy"] = "candy mutation year",
+        ["year of candy"] = "candy mutation year",
+        ["candy year"] = "candy mutation year",
+        ["what year was candy released"] = "candy mutation year",
+        ["year was candy released"] = "candy mutation year",
+        ["when was candy released"] = "when was candy mutation released",
+        ["sammys name"] = "sammy name",
+        ["what is sammys name"] = "sammy name",
+        ["what is sammy name"] = "sammy name",
+        ["what is the name of sammy"] = "sammy name",
+        ["what is his name"] = "sammy name",
+        ["his name"] = "sammy name",
+    }
+    q = aliases[q] or q
     return q
 end
 
@@ -6543,8 +6585,12 @@ local CalciumSammyFacts = {
     ["my username"] = "SPYDERSAMMY",
     ["how old am i"] = "24",
     ["how old is sammy"] = "24",
+    ["age of sammy"] = "24",
     ["my age"] = "24",
     ["sammy age"] = "24",
+    ["sammys age"] = "24",
+    ["what is the age of sammy"] = "24",
+    ["what is sammy age"] = "24",
     ["age"] = "24",
     ["birth year"] = "2002",
     ["year born"] = "2002",
@@ -6683,6 +6729,23 @@ local CalciumSammyFacts = {
     ["admin war winner"] = "GROWAGARDEN",
     ["my name"] = "SAMMY",
     ["what is my name"] = "SAMMY",
+    ["sammy name"] = "SAMMY",
+    ["sammys name"] = "SAMMY",
+    ["what is sammys name"] = "SAMMY",
+    ["what is sammy name"] = "SAMMY",
+    ["what is the name of sammy"] = "SAMMY",
+    ["what is his name"] = "SAMMY",
+    ["his name"] = "SAMMY",
+    ["candy mutation year"] = "2025",
+    ["candy mutation release year"] = "2025",
+    ["the year of the candy"] = "2025",
+    ["year of the candy"] = "2025",
+    ["the year of candy"] = "2025",
+    ["year of candy"] = "2025",
+    ["candy year"] = "2025",
+    ["what year was candy released"] = "2025",
+    ["when was candy mutation released"] = "JULY2025",
+    ["when was candy released"] = "JULY2025",
     ["worst brainrot"] = "NOOBINIPIZZANINI",
     ["worst animal"] = "NOOBINIPIZZANINI",
     ["favorite brainrot"] = "MEOWL",
@@ -7182,15 +7245,76 @@ local partLines = {}
 local PART_TIMEOUT = 20
 retypeListening = false  -- true when we're waiting for the corrected word after an invalid
 
+local RESUME_TTL = 24 * 60 * 60
+local function resumeIsFresh()
+    return resumeState.active == true
+        and type(resumeState.parts) == "table"
+        and #resumeState.parts > 0
+        and tonumber(resumeState.savedAt)
+        and os.time() - tonumber(resumeState.savedAt) <= RESUME_TTL
+end
+
+local function persistCodeCapture()
+    resumeState = {
+        active = collecting == true and #parts > 0,
+        parts = {},
+        savedAt = os.time(),
+    }
+    for i, part in ipairs(parts) do
+        if i > 5 then break end
+        resumeState.parts[i] = tostring(part)
+    end
+    pcall(function()
+        if writefile then
+            writefile(RESUME_FILE, ConfigHttp:JSONEncode({
+                version = 1,
+                active = resumeState.active,
+                parts = resumeState.parts,
+                savedAt = resumeState.savedAt,
+            }))
+        end
+    end)
+end
+
+local function clearCodeCapture()
+    resumeState = { active = false, parts = {}, savedAt = os.time() }
+    pcall(function()
+        if writefile then
+            writefile(RESUME_FILE, ConfigHttp:JSONEncode({
+                version = 1,
+                active = false,
+                parts = {},
+                savedAt = resumeState.savedAt,
+            }))
+        end
+    end)
+end
+
 local function startCollecting()
+    local restored = resumeIsFresh() and resumeState.parts or nil
     collecting, parts, partLines, lastPartAt = true, {}, {}, os.clock()
     retypeListening = false
     seen = {}
+    if restored then
+        for i, part in ipairs(restored) do
+            if i > 5 then break end
+            part = cleanCode(part):upper()
+            if part ~= "" and not seen[part] then
+                parts[#parts + 1] = part
+                seen[part] = true
+            end
+        end
+        if #parts > 0 then
+            log("Restored code: " .. table.concat(parts), "sys")
+        end
+    end
+    persistCodeCapture()
 end
 stopCollecting = function()
     collecting, parts, partLines = false, {}, {}
     retypeListening = false
     seen = {}
+    clearCodeCapture()
 end
 
 function UI.cancelTracking()
@@ -7215,6 +7339,19 @@ local function renderParts()
     end
 end
 
+-- A rerun destroys the old UI before creating the new one. Keep an unfinished
+-- capture alive so the next announcement can append the next code block.
+cleanups[#cleanups + 1] = function()
+    if collecting and #parts > 0 then persistCodeCapture() end
+end
+
+if resumeIsFresh() then
+    startCollecting()
+    if not settings.armed then UI.setArmed(true, true) end
+    renderParts()
+    previewCode(table.concat(parts))
+end
+
 local function capturePart(part)
     if part == "" then return end
 
@@ -7227,6 +7364,7 @@ local function capturePart(part)
         parts[#parts + 1] = part
         local combined = table.concat(parts)
         previewCode(combined)
+        persistCodeCapture()
         log('<font color="#FFD700">Retype attempt (' .. #parts .. '/5) → ' .. esc(combined) .. '</font>', "sys", true)
         redeem(combined, true)
         return
@@ -7243,6 +7381,7 @@ local function capturePart(part)
     parts[#parts + 1] = part
     local combined = table.concat(parts)
     previewCode(combined)
+    persistCodeCapture()
 
     -- twoWordCheck: at 2 parts, attempt an early redeem and keep listening regardless
     -- collection continues until submitAfter parts arrive OR user cancels
@@ -7320,7 +7459,11 @@ local function onAnnouncement(message)
     if text == "" then return end
 
     local directCode = extractDirectCode(text)
-    if directCode and once("code:" .. directCode) then
+    local directTrigger = select(1, matchTrigger(text))
+    -- A message containing "the code is" is a capture trigger, not a
+    -- complete code. Let capturePart collect it block by block so a later
+    -- announcement can append the rest instead of submitting too early.
+    if directCode and not directTrigger and once("code:" .. directCode) then
         redeem(directCode, true)
         return
     end
@@ -7348,15 +7491,14 @@ local function onAnnouncement(message)
 
     local trigger, rest = matchTrigger(text)
     if trigger then
-        stopCollecting()
+        if isRiddleTrigger(trigger) or not resumeIsFresh() then
+            stopCollecting()
+        end
         awaitingQuestion = 0
         RS.buffer = {}
         RS.capture = nil
         RS.token += 1
-        if not isRiddleTrigger(trigger) and rest ~= "" and not rest:find("%s") then
-            redeem(rest)
-            log("Trigger \xe2\x86\x92 " .. rest, "sys")
-        elseif isRiddleTrigger(trigger) then
+        if isRiddleTrigger(trigger) then
             log("Riddle detected! Trigger ('" .. text .. "')", "sys")
             awaitingQuestion = os.clock() + QUESTION_TIMEOUT
             RS.capture = RiddleEngine.newCapture(os.clock())
@@ -7377,7 +7519,12 @@ local function onAnnouncement(message)
             log("Trigger detected ('" .. text .. "'). Starting capture (" .. settings.submitAfter .. " messages)...", "sys")
             log('<font color="#FFD700">Code redeemer started tracking</font>', "sys", true)
             assistant.event("tracking")
-            startCollecting()
+            if not collecting then startCollecting() end
+            if rest ~= "" then
+                for block in rest:gmatch("[%w][%w_%-]*") do
+                    capturePart(cleanCode(block))
+                end
+            end
         end
         if not settings.armed then UI.setArmed(true, true) end
         return

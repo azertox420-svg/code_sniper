@@ -4,7 +4,7 @@
   "game": "Steal a Brainrot",
   "script": "code/azertoxbest.lua",
   "databaseManifest": "data/manifest.json",
-  "databaseRecords": 24171,
+  "databaseRecords": 24172,
   "databaseShards": 1,
   "apiKeysIncluded": false,
   "databaseFile": "data/azertox_db.lua.txt"

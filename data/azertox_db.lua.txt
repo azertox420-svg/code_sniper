@@ -24173,5 +24173,6 @@ return {
     { q = "zombie trait release month", a = { "JUNE" }, al = {} },
     { q = "zombie trait release year", a = { "2025" }, al = {} },
     { q = "zombie trait year", a = { "2025" }, al = {} },
+    { q = "his name", a = { "SAMMY" }, al = {} },
   }
 }
