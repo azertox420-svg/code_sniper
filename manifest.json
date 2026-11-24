@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "code-redeemer",
+  "game": "Steal a Brainrot",
+  "script": "code/azertoxbest.lua",
+  "databaseManifest": "data/manifest.json",
+  "databaseRecords": 24171,
+  "databaseShards": 1,
+  "apiKeysIncluded": false,
+  "databaseFile": "data/azertox_db.lua.txt"
+}
